@@ -1,65 +1,63 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
+    <div className="flex flex-col items-center justify-center flex-1 py-2 md:py-4">
+      {/* Avatar */}
+      <div className="relative w-24 h-24 mb-5 rounded-full overflow-hidden border border-[var(--color-border)] shadow-sm bg-[var(--color-muted)] shrink-0">
+        <Image 
+          src="/avatar.jpg" 
+          alt="Akshat Dhondiyal"
+          fill
+          className="object-cover"
+          sizes="96px"
           priority
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
+
+      {/* Header */}
+      <h1 className="font-serif text-3xl md:text-4xl font-bold tracking-tight text-center mb-1">
+        Akshat Dhondiyal
+      </h1>
+      <p className="font-sans italic text-[var(--color-muted-foreground)] text-center mb-6 md:mb-8">
+        computer science student & full stack developer
+      </p>
+
+      {/* Bio */}
+      <div className="w-full space-y-4 text-[var(--color-foreground)] leading-relaxed text-[15px] md:text-base text-left">
+        <p>
+          Hi, I'm a Computer Science student at Graphic Era Hill University and currently a Full Stack Developer Intern at TBI GEU. I am interested in competitive programming, systems programming and high performance backend engineering.
+        </p>
+        <p>
+          Currently, I'm building scalable SaaS platforms utilizing FastAPI, Next.js, and pgvector. Outside of work, I engineer high-performance tools like SystemPulse in C++17 and compete across platforms like Codeforces, CodeChef, and LeetCode.
+        </p>
+        <p>
+          I'm always open to new opportunities, hackathons, and technical deep dives. You can view my projects, read my blog, or reach out directly.
+        </p>
+      </div>
+
+      {/* Social Links */}
+      <div className="mt-8 md:mt-10 flex flex-wrap justify-center gap-6 text-sm text-[var(--color-muted-foreground)]">
+        <Link href="/blog" className="hover:text-[var(--color-foreground)] transition-colors">
+          blog
+        </Link>
+        <Link href="/projects" className="hover:text-[var(--color-foreground)] transition-colors">
+          projects
+        </Link>
+        <a href="https://github.com/akshatddyl" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-foreground)] transition-colors">
+          github
+        </a>
+        <a href="https://drive.google.com/file/d/1lDeYA5jRNXzCQPvid-XqgchiqAxAqvJe/view?usp=sharing" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-foreground)] transition-colors">
+          resume
+        </a>
+        <a href="https://www.linkedin.com/in/akshatdhondiyal/" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-foreground)] transition-colors">
+          linkedin
+        </a>
+        <a href="mailto:akshatdhondiyal14@gmail.com" className="hover:text-[var(--color-foreground)] transition-colors">
+          email
+        </a>
+      </div>
     </div>
   );
 }
