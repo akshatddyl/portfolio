@@ -1,0 +1,75 @@
+---
+title: "NaviGo"
+date: "2026-04-03"
+summary: "An infrastructure-less Android app for accessible indoor navigation for visually impaired people."
+github: "https://github.com/akshatddyl/NaviGo"
+---
+
+*GPS stops being useful the moment you walk through a door, and most indoor "wayfinding" apps just hand you a static floor-plan image — which is no help at all if you can't see it. I wanted to build indoor navigation that actually works for someone who's blind or low-vision: track position with nothing but phone sensors, let them ask for a destination out loud in whatever language they're comfortable with, and guide them there with voice and haptics.*
+* Source Code available at: [github.com/akshatddyl/NaviGo](https://github.com/akshatddyl/NaviGo)
+* Live Demo: [here](https://drive.google.com/file/d/1o-7f47fvEoiPQeS911pKgs5wjGWcBl2K/view?usp=drivesdk)
+
+## The Problem
+
+Three separate problems had to be solved for this to actually be usable, not just a demo. First, indoor positioning has no GPS and rarely justifies installing BLE beacons, so the app has to estimate where the user is purely from motion sensors. Second, a voice-first, bilingual (English/Hindi/Hinglish) destination request is not "search text" — it's a rambling sentence that has to be understood, not pattern-matched. Third, "understood" isn't enough once the app is actually guiding someone with an accessibility need: it has to notice when they've drifted off route and recover, without constantly false-alarming on ordinary noise like a slightly wide turn.
+
+## Tech Stack
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-b py-4 my-6 text-sm">
+  <div className="font-bold border-b pb-2 md:border-b-0 md:pb-0">Component</div>
+  <div className="font-bold border-b pb-2 md:border-b-0 md:pb-0">Technology</div>
+  <div className="font-bold border-b pb-2 md:border-b-0 md:pb-0">Why I chose it</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">UI</div>
+  <div className="pt-2 md:pt-0">Kotlin + Jetpack Compose</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Declarative UI with first-class TalkBack/accessibility semantics baked in</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Positioning</div>
+  <div className="pt-2 md:pt-0">Android step-counter + compass sensors</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Pure dead-reckoning from motion sensors — no GPS or beacon hardware needed indoors</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Routing</div>
+  <div className="pt-2 md:pt-0">Custom Dijkstra over a local graph (Room)</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Deterministic shortest path, with an accessibility filter that skips edges marked as stairs</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Voice NLU</div>
+  <div className="pt-2 md:pt-0">Gemini API + Neo4j AuraDB vector search</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Extracts intent from rambling bilingual speech and matches it to a graph node semantically, not by keyword</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Offline fallback</div>
+  <div className="pt-2 md:pt-0">Custom Hindi stemmer + curated alias dataset</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Keeps voice queries working with zero network using hand-built intent clusters</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Cloud sync</div>
+  <div className="pt-2 md:pt-0">Firebase Auth + Firestore</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Lets one "publisher" record a venue once and share it to every other user</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">DI / Persistence</div>
+  <div className="pt-2 md:pt-0">Hilt + Room</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Testable dependency graph and offline-first local storage of venue maps</div>
+</div>
+
+
+## Architecture & Implementation
+
+Three engines do the actual work. The **routing engine** is a fairly standard Dijkstra's algorithm over a graph of recorded venue nodes and edges, with one addition: when accessibility mode is on, edges flagged as having stairs are dropped from the adjacency list entirely before the search even runs, so the shortest *accessible* path is the only path Dijkstra can find.
+
+The **navigation engine** is a state machine — `Navigating → VerifyingTurn → SoftWarning → Recalculating → Arrived` — driven by two sensor streams. Distance walked is estimated from step count times an average stride length; direction is read from the compass and compared against the bearing the current edge expects. The interesting part is what happens when they disagree: right after issuing a turn instruction, the engine enters `VerifyingTurn` and gives the user a grace period before checking heading at all (since nobody turns instantly), only escalates to `SoftWarning` after two consecutive wrong headings rather than one, and only triggers an actual reroute after several more steps of continued mismatch. Heading tolerance itself is looser while walking straight (45°) than right after a turn (35°), because that's closer to how compass noise actually behaves in practice.
+
+The **voice resolution pipeline** is a three-step fallback ladder, not a single call to an LLM. Gemini first extracts and translates the query's core intent into English (so "bhaiya washroom kahan hai" and "where's the restroom" resolve to the same place), Gemini generates an embedding for that extracted entity, and a Neo4j vector search finds the closest matching node — but only above a 0.89 similarity threshold; below that, the app treats it as "not confident enough" rather than guessing. If the network or the model isn't available at all, everything falls back to a fully offline path: a hand-built Hindi stemmer strips conversational filler and matches against a curated alias dataset of how people actually phrase requests in the field ("mujhe emergency kahan hai" style queries), so core functionality doesn't disappear the moment connectivity does. Step detection follows the same layered-fallback philosophy hardware-side: it prefers the phone's `TYPE_STEP_DETECTOR` sensor, falls back to `TYPE_STEP_COUNTER` with a session baseline, and falls back again to raw accelerometer peak detection on devices with neither.
+
+![NaviGo](/navigo-arch.svg)
+
+## Challenges & Trade-offs
+
+The hardest problem was telling "the user drifted off route" apart from "the user just turned a corner and their heading hasn't caught up yet" — a naive single-threshold heading check would either nag constantly on ordinary turns or miss genuine deviations entirely, and for a navigation aid meant for accessibility use, both failure modes are bad in different ways. The state-machine approach with grace periods and a two-strikes rule before escalating was the actual fix, and it only became obvious as a requirement after testing the naive version and watching it interrupt every normal turn.
+
+The clearest trade-off is in how position is estimated: step count times a fixed stride length is far simpler than full pedestrian dead-reckoning with accelerometer integration, and deliberately so — double-integrating raw accelerometer data accumulates drift fast, and a simpler estimate that gets corrected by compass heading and periodic node arrivals turned out to be more robust in practice than a fancier one with compounding error.
+
+The other deliberate trade-off is architectural: the "smart" voice understanding depends on a cloud LLM and a hosted vector database, both of which can be exactly the thing that's unreliable inside a large concrete building. Rather than let the feature fail outright when connectivity drops, the offline Hindi stemmer and alias dataset exist specifically as a lower-quality-but-always-available backstop — accepting less accurate matching in exchange for the feature never fully disappearing.
+
+## What I Learned
+
+* Learned to model noisy real-world sensor signal — compass drift, imprecise stride length — as a state machine with grace periods and hysteresis, instead of trusting a single instantaneous threshold check.
+* Learned to design a genuine fallback ladder (cloud LLM → vector search → offline rule-based NLP) so a feature degrades gracefully under bad connectivity instead of failing outright.
+* Gained hands-on experience combining a classical graph algorithm (Dijkstra with an accessibility constraint) with live sensor data to turn a static map into moment-to-moment guidance.

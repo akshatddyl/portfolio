@@ -1,11 +1,18 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Cormorant_Garamond } from "next/font/google";
+
+const cormorant = Cormorant_Garamond({
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  subsets: ["latin"],
+});
 
 export default function Home() {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 py-2 md:py-4">
+    <div className="flex flex-col items-center justify-center flex-1 py-0">
       {/* Avatar */}
-      <div className="relative w-24 h-24 mb-5 rounded-full overflow-hidden border border-[var(--color-border)] shadow-sm bg-[var(--color-muted)] shrink-0">
+      <div className="relative w-24 h-24 mb-3 rounded-full overflow-hidden border border-[var(--color-border)] shadow-sm bg-[var(--color-muted)] shrink-0">
         <Image 
           src="/avatar.jpg" 
           alt="Akshat Dhondiyal"
@@ -17,28 +24,28 @@ export default function Home() {
       </div>
 
       {/* Header */}
-      <h1 className="font-serif text-3xl md:text-4xl font-bold tracking-tight text-center mb-1">
+      <h2 className={`${cormorant.className} italic font-normal text-5xl md:text-7xl leading-none tracking-tight text-center mb-1`}>
         Akshat Dhondiyal
-      </h1>
-      <p className="font-sans italic text-[var(--color-muted-foreground)] text-center mb-6 md:mb-8">
-        computer science student & full stack developer
+      </h2>
+      <p className="font-sans italic text-[var(--color-muted-foreground)] text-center mb-4 md:mb-5">
+        CS undergrad & aspiring software engineer
       </p>
 
       {/* Bio */}
-      <div className="w-full space-y-4 text-[var(--color-foreground)] leading-relaxed text-[15px] md:text-base text-left">
+      <div className="w-full space-y-3 text-[var(--color-foreground)] leading-relaxed text-[15px] md:text-base text-left">
         <p>
-          Hi, I'm a Computer Science student at Graphic Era Hill University and currently a Full Stack Developer Intern at TBI GEU. I am interested in competitive programming, systems programming and high performance backend engineering.
+          Hi, I'm pursuing a B.Tech in Computer Science & Engineering at Graphic Era Hill University and will graduate in 2028. Currently a Full Stack Developer Intern at TBI GEU. My primary interests include algorithms, computer architecture, backend engineering and linux.
         </p>
         <p>
-          Currently, I'm building scalable SaaS platforms utilizing FastAPI, Next.js, and pgvector. Outside of work, I engineer high-performance tools like SystemPulse in C++17 and compete across platforms like Codeforces, CodeChef, and LeetCode.
+          Currently balancing academics, programming, and whatever else catches my interest.
         </p>
         <p>
-          I'm always open to new opportunities, hackathons, and technical deep dives. You can view my projects, read my blog, or reach out directly.
+          I'm a big fan of open source software and always open to new opportunities and technical discussions. Feel free to explore my projects, read my blogs or get in touch.
         </p>
       </div>
 
       {/* Social Links */}
-      <div className="mt-8 md:mt-10 flex flex-wrap justify-center gap-6 text-sm text-[var(--color-muted-foreground)]">
+      <div className="mt-6 md:mt-8 flex flex-wrap justify-center gap-6 text-sm text-[var(--color-muted-foreground)]">
         <Link href="/blog" className="hover:text-[var(--color-foreground)] transition-colors">
           blog
         </Link>

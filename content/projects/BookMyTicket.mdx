@@ -1,0 +1,74 @@
+---
+title: "BookMyTicket"
+date: "2026-07-01"
+summary: "A distributed event-ticketing platform built as six independently deployable Spring Boot microservices, using Redis-backed distributed locks and Kafka event fan-out to guarantee no two users can ever book the same seat."
+github: "https://github.com/akshatddyl/BookMyTicket"
+---
+
+*BookMyTicket is a distributed event-ticketing platform designed to solve one of the hardest problems in ticketing systems: ensuring that no two users can book the same seat, even when requests arrive simultaneously.*
+* Source Code available at: [github.com/akshatddyl/BookMyTicket](https://github.com/akshatddyl/BookMyTicket)
+
+## The Problem
+
+Popular events generate bursts of concurrent booking requests. The challenge is guaranteeing that exactly one user can reserve a seat while handling payment failures and service crashes without leaving seats permanently locked or oversold.
+## Tech Stack
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-b py-4 my-6 text-sm">
+  <div className="font-bold border-b pb-2 md:border-b-0 md:pb-0">Component</div>
+  <div className="font-bold border-b pb-2 md:border-b-0 md:pb-0">Technology</div>
+  <div className="font-bold border-b pb-2 md:border-b-0 md:pb-0">Why I chose it</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Gateway</div>
+  <div className="pt-2 md:pt-0">Spring Cloud Gateway (WebFlux)</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Validates JWTs once at the edge and forwards identity as headers, so no downstream service re-implements auth</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Microservices</div>
+  <div className="pt-2 md:pt-0">Spring Boot 3.5 / Java 25</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Six domain-isolated services (user, event, inventory, booking, payment, notification)</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Distributed Locking</div>
+  <div className="pt-2 md:pt-0">Redis (`SETNX` + TTL)</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Atomic, self-expiring locks so a seat can't be double-reserved or stay stuck if a request dies mid-flow</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Event Bus</div>
+  <div className="pt-2 md:pt-0">Apache Kafka</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Decouples "booking succeeded/failed" from everyone who needs to react to it</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Database</div>
+  <div className="pt-2 md:pt-0">PostgreSQL, one schema per service</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Each service owns its data outright; no service reaches into another's tables</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Frontend</div>
+  <div className="pt-2 md:pt-0">React 19 + Vite + TypeScript</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Fast local dev loop and type safety for the customer/operator portal</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Observability</div>
+  <div className="pt-2 md:pt-0">Prometheus + Grafana</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Metrics scraped from the gateway and every service</div>
+
+  <div className="font-semibold pt-2 md:pt-0 text-gray-700 dark:text-gray-300">Infra</div>
+  <div className="pt-2 md:pt-0">Docker Compose (dev) + Kubernetes manifests</div>
+  <div className="pt-2 md:pt-0 text-gray-500 dark:text-gray-400">Local dev via Compose; per-service K8s manifests for a production-style deployment story</div>
+</div>
+## Architecture & Implementation
+
+All requests pass through **Spring Cloud Gateway**, which validates JWTs once and forwards trusted user claims to downstream services. The **booking-service** orchestrates the booking flow: 
+1. Reserve seats through **inventory-service** using Redis distributed locks. 
+2. Create a `PENDING` booking. 
+3. Process payment through **payment-service**. 
+4. Publish a Kafka event indicating success or failure. After that, the workflow becomes event-driven: - **inventory-service** confirms or releases seats. - **notification-service** sends booking confirmations or failure notifications.
+This hybrid approach keeps critical user-facing operations synchronous while allowing post-booking tasks to remain loosely coupled.
+
+![BookMyTicket system architecture](/bookmyticket-architecture.svg)
+
+## Challenges & Trade-offs
+
+The genuinely hard problem was making the seat-locking step atomic across two different data stores at once — Redis for the lock, Postgres for the seat's real status. The lock only counts if both agree: `SETNX` in Redis establishes "who got here first," and the seat's status in Postgres is re-checked before committing, so a lock acquired on stale data still gets rejected. Rolling back partial Redis locks on any failure was the piece I got wrong first — an early version left orphaned locks behind on partial failures, which is exactly the kind of bug that only shows up once someone tries to book several seats at once and one of them is already taken.
+
+The clearest deliberate trade-off is mixing synchronous and asynchronous communication rather than making everything one or the other. Seat-locking and payment are synchronous REST calls because the caller genuinely needs an immediate answer — "did I get the seat, did the payment go through." That's also the trade-off's cost: if `inventory-service` or `payment-service` is down, booking fails immediately rather than degrading gracefully. Everything *after* the outcome is known — updating inventory, notifying the user — is async over Kafka, because nothing in that path needs to block the user's response, and new consumers (analytics, SMS, whatever) can subscribe later without booking-service ever changing.
+
+## What I Learned
+
+* Learned the practical difference between **orchestration and choreography** in a saga — booking-service actively drives the synchronous, must-succeed-now steps, while Kafka lets the once-the-outcome-is-known steps happen independently without central coordination.
+* Learned to treat a distributed lock's TTL as a correctness feature, not just a cleanup mechanism — it's what keeps a crashed request from permanently blocking a seat.
+* Learned to centralize authentication at the API gateway using JWT claims forwarded as trusted headers, instead of re-verifying tokens in every service that receives a request.

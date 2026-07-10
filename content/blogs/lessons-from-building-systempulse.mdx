@@ -1,0 +1,121 @@
+---
+title: "Lessons from Building SystemPulse"
+date: "07-09-2026"
+summary: "I built a distributed telemetry pipeline from scratch instead of reaching for an off-the-shelf collector. Here's the reasoning behind every major design decision — and the systems concepts they taught me."
+tags: ["distributed-systems", "cpp", "python", "systems-design", "observability"]
+readingTime: "10 min read"
+---
+## Overview
+I built [SystemPulse](https://github.com/akshatddyl/SystemPulse) — a distributed telemetry pipeline with lightweight C++ agents, a central broker, and a Python anomaly detector — mostly because I wanted to stop treating "concurrency," "backpressure," and "observability" as words I understood in theory. This post is the version of that project I wish I'd read *before* I started: not a feature list, but a walk through six decisions that each forced me to actually learn the concept behind them, instead of just knowing its name.
+
+## The shape of the problem
+
+Most tutorials teach you to monitor a system by pointing an existing tool — Prometheus's node exporter, Datadog's agent, whatever — at a machine and calling it done. That's the right call in production. It's a terrible way to *learn* what a telemetry pipeline actually has to solve.
+
+So I set myself a narrower, harder problem: build every layer myself.
+
+- **Agents** that sit on each host and read real resource usage(CPU,RAM metrics) with near-zero overhead.
+- **A broker** that can absorb bursts from an entire fleet without falling over.
+- **A detector** that flags anomalies as data arrives, with no historical dataset to train on.
+- **A monitoring layer for the monitoring layer** — because a telemetry system that can't tell you it's struggling isn't trustworthy.
+
+Four layers, four different failure modes, four different concurrency problems. Here's how each one got solved, and why the "obvious" first answer wasn't the one I shipped.
+
+Here is a high-level look at how these pieces fit together before we dive into the code:
+Here is a high-level look at how these pieces fit together before we dive into the code:
+
+![SystemPulse Architecture Diagram](/systempulse-architecture.svg)
+## Decision 1: A ring buffer instead of a mutex-protected queue
+
+Inside each agent, one thread samples metrics and another thread ships them over HTTP. That's a textbook **producer-consumer** setup, and the textbook answer is: put a `std::queue` behind a `std::mutex`, lock on every push and pop, done.
+
+I didn't do that, and the reason is worth understanding rather than just copying.
+
+A mutex means: even in the "no contention" case, every single push and pop pays the cost of acquiring and releasing a lock — and if the two threads *do* happen to collide, one of them blocks and the OS has to schedule it back in later. For an agent whose entire selling point is "you shouldn't notice it's running," that overhead adds up when you're sampling every few hundred milliseconds, forever.
+
+The alternative is a **lock-free ring buffer**: a fixed-size circular array where the producer and consumer coordinate purely through atomic read/write and index operations, with no thread ever blocking the other. This only works cleanly because it's a strict **single-producer, single-consumer** relationship inside one process — lock-free structures get dramatically harder to reason about the moment you add more producers or consumers, which is exactly why I *didn't* try to reuse this pattern at the broker (more on that below). The lesson here isn't "lock-free is better" — it's that the right concurrency primitive depends entirely on how many threads are actually touching the structure, and pretending otherwise is how people ship subtly broken lock-free code.
+
+## Decision 2: Sleeping instead of spinning
+
+At the broker, dozens of agents can be POSTing batches concurrently, and a worker thread needs to drain a shared queue as fast as possible. The naive way to write that worker loop looks like this:
+
+```cpp
+while (true) {
+    if (!queue.empty()) {
+        process(queue.pop());
+    }
+    // otherwise... check again. immediately.
+}
+```
+
+This is **busy-waiting**, and it's a trap that's easy to fall into because it *works* — the code is correct, the logic is simple, and it feels efficient because there's no "waiting around." What it actually does is pin a CPU core near 100% utilization *even when there is nothing to process*, because the loop is asking "is there work yet?" thousands of times a second regardless of the answer. For a system whose whole premise is proving it has low overhead, shipping a busy-wait loop would have quietly undermined the entire pitch.
+
+The fix is to let the consumer thread genuinely sleep, and have the producer wake it up when — and only when — there's actually something to do:
+
+```cpp
+std::unique_lock<std::mutex> lock(mtx);
+cv.wait(lock, [&]{ return !queue.empty(); });
+// thread is asleep, using 0% CPU, until notify() fires
+```
+
+A `std::condition_variable` hands the scheduling problem back to the OS: the thread is parked, consumes no CPU, and gets woken up by the kernel exactly when a producer calls `notify()`. Idle CPU on the broker measured at 0.0% — not "close to zero," actually zero — which is the kind of number that only shows up when you stop polling and start waiting properly.
+
+Notice the asymmetry with Decision 1: the agent uses lock-free atomics because it's single-producer/single-consumer and every microsecond of latency matters for sampling accuracy. The broker uses a blocking, mutex-based queue because it's *many*-producer/single-consumer, and correctness-under-concurrency mattered more than shaving nanoseconds off each enqueue. Same general problem — "hand data from one thread to another" — two different correct answers, because the constraints were different.
+
+## Decision 3: Choosing which way you want to fail (V. Important)
+
+Here's a question that doesn't have a universally correct answer: what should happen when data arrives faster than it can be processed?
+
+There are really only three options, and each one is a different bet about what matters most:
+
+1. **Block the producer** until there's room. Safe, but now a slow consumer can stall your entire upstream fleet.
+2. **Drop the newest data.** Keeps old context intact, but you lose visibility into what's happening *right now* — the worst possible moment to go blind.
+3. **Drop the oldest data.** You lose history, but you stay caught up with the present.
+
+For a telemetry system, option 3 is the correct trade-off, and the reasoning is domain-specific: the entire point of the pipeline is to answer "what is happening on my fleet right now," so a queue full of ten-minute-old samples is actively less useful than a queue of samples from the last thirty seconds. A financial transaction log would make the *opposite* choice — dropping old transactions is unacceptable, and you'd rather apply backpressure and slow everything down than lose a record. There's no universal right answer to "what do you do when you're overloaded" — there's only "what does this system need to be true about, no matter what."
+
+SystemPulse enforces a hard ceiling (10,000 items) on the broker's queue and evicts the oldest entry once it's hit, rather than growing without bound and eventually taking the whole process down with an out-of-memory crash. That's a deliberate trade of *completeness* for *survivability* — and naming that trade-off explicitly, rather than discovering it during an incident, is most of what "designing for backpressure" actually means.
+
+## Decision 4: Detecting anomalies without training a model
+
+The ML processor doesn't use a trained model, and that's on purpose. Training implies you have a labeled historical dataset of "normal" vs. "anomalous" — which a brand-new agent, on a brand-new host, simply doesn't have yet. So instead of offline training, each `agent_id` gets a rolling window of its own recent samples, and every new value is scored against that window using a **Z-score**: how many standard deviations away from the recent mean is this point?
+
+That sounds simple, and the simplicity is exactly what makes it fragile in three specific ways I had to design around:
+
+- **No history yet.** A Z-score computed from two or three samples is nearly meaningless — one noisy reading can produce a huge score and fire a false alarm before there's any real baseline. The fix is a mandatory warm-up period (30 samples) where data is stored but never scored.
+- **Division by (near) zero.** If a metric has been essentially flat, its standard deviation approaches zero — and dividing by a number near zero can blow up the Z-score into something enormous and meaningless, even for a tiny, unremarkable fluctuation. The fix is an epsilon guard: detect when std-dev is negligibly small and stop trusting the Z-score math for that sample.
+- **But flat metrics can still spike for real.** If you just suppress scoring whenever std-dev is tiny, you'll miss a genuine, large jump in an otherwise-quiet metric — which is often the *most* important kind of anomaly to catch. So there's an absolute-threshold fallback that catches exactly that case, independent of the statistical math.
+
+None of these three guardrails is exotic on its own. What they teach, together, is that "compute a Z-score" is the easy 10% of online anomaly detection — the actual engineering is in the edge cases around it. (A natural next step here, if I revisit this, is Welford's online algorithm for numerically stable running mean/variance instead of recomputing statistics from the stored window each time — it avoids some floating-point pitfalls that a fixed-window recomputation doesn't fully sidestep.)
+
+## Decision 5: Reading `cgroups`, not `/proc`
+
+This one cost me a genuinely confusing debugging session. Inside a container, reading `/proc/stat` for CPU usage doesn't reliably give you *that container's* usage — depending on the runtime and kernel setup, it can reflect the *host's* aggregate CPU state instead. Which means ten containers on the same host can all report identical, host-wide numbers, each one silently wrong about itself.
+
+That's not a rare edge case for this project — it's a direct hit on the entire premise of per-host anomaly detection. If every container thinks it's seeing the host's numbers, "isolated per-agent baselines" is a lie.
+
+The fix is reading from the container's `cgroup` pseudo-filesystem (`/sys/fs/cgroup/`) instead, which the container runtime *does* scope correctly per container. The broader lesson: "containers are isolated" is true at the process and filesystem level, but *which kernel interface you read from* determines whether your code actually sees that isolation or accidentally punches through it. I only caught this by running 100 containers simultaneously and noticing their numbers were suspiciously identical — a good reminder that some correctness bugs only show up under real concurrency, not in a single-instance test.
+
+## Decision 6: Making "scale to 100" a non-event
+
+The last design choice is less about a specific algorithm and more about a habit: avoiding coordination whenever you can.
+
+A common way to handle a growing fleet is a central registry — something every new agent has to register with before it's allowed to send data. That's more moving parts, another thing that can be down, another thing to keep consistent. SystemPulse sidesteps it entirely: each agent calls the POSIX `gethostname()` function on startup and uses that as its own `agent_id`. Docker Compose already guarantees every scaled replica gets a unique hostname, so identity comes for free from infrastructure that already exists — no registry, no handshake, no coordination service.
+
+The result is that scaling the fleet from 1 agent to 100 is a single command (`docker compose up --scale agent=100`) with zero code changes. The broader takeaway: every piece of coordination you *don't* need to build is a piece of coordination that can't fail at 3 a.m.
+
+## What I'd change next
+
+A few honest gaps, in the interest of not overselling this:
+
+- The broker's queue is in-memory only — a crash loses whatever's currently queued. A durable, disk-backed buffer (or handing this whole layer to something like Kafka or NATS) would trade some of the "I built it myself" learning for real durability guarantees.
+- Rolling statistics are recomputed from the stored window rather than maintained incrementally — Welford's algorithm would be the more numerically robust choice at scale.
+- Metric collection currently polls `cgroups` on an interval; something like eBPF could get lower overhead and finer-grained data, at the cost of a much steeper implementation curve.
+
+None of these are bugs, exactly — they're the next layer of trade-offs I chose not to take on for this iteration, and naming them honestly feels more useful than pretending the design is finished.
+
+## Closing thought
+
+None of these six decisions were hard *in isolation*. Ring buffers, condition variables, load-shedding, online statistics, cgroups, self-assigned identifiers — each one is a well-documented concept you can find explained in a paragraph. What was actually hard, is realizing that each layer of the system needed a *different* answer to what looked like the same underlying question: "how do I make two things that don't trust each other's timing communicate safely?"
+
+If you want to see the code these decisions turned into, the full project is on GitHub: [github.com/akshatddyl/SystemPulse](https://github.com/akshatddyl/SystemPulse).

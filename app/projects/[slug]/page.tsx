@@ -42,7 +42,7 @@ export default async function ProjectPost({ params }: { params: Promise<{ slug: 
 
       {/* Header */}
       <header className="mb-14">
-        <h1 className="font-serif text-3xl md:text-5xl font-bold tracking-tight text-[var(--color-foreground)] mb-4 leading-tight">
+        <h1 className="font-serif italic text-3xl md:text-5xl font-bold tracking-tight text-[var(--color-foreground)] mb-4 leading-tight">
           {post.frontmatter.title}
         </h1>
         <p className="text-[13px] text-[var(--color-muted-foreground)] uppercase tracking-widest font-semibold">
@@ -55,7 +55,7 @@ export default async function ProjectPost({ params }: { params: Promise<{ slug: 
       </header>
 
       {/* Content */}
-      <div className="prose dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium prose-a:text-[var(--color-foreground)] prose-a:underline-offset-4 hover:prose-a:opacity-70 prose-table:border-collapse prose-th:border prose-th:border-[var(--color-border)] prose-th:p-3 prose-td:border prose-td:border-[var(--color-border)] prose-td:p-3">
+      <div className="prose dark:prose-invert max-w-none prose-headings:font-serif prose-headings:italic prose-headings:font-medium prose-a:text-[var(--color-foreground)] prose-a:underline-offset-4 hover:prose-a:opacity-70 prose-table:border-collapse prose-th:border prose-th:border-[var(--color-border)] prose-th:p-3 prose-td:border prose-td:border-[var(--color-border)] prose-td:p-3">
         <MDXRemote source={post.content} />
       </div>
     </article>

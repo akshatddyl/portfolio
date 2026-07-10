@@ -1,0 +1,71 @@
+---
+title: "Terminal-Based Text Editor"
+date: "2025-11-20"
+summary: "A terminal-native text editor written from scratch in C, backed entirely by custom data structures — a rope for O(log n) edits, a trie for instant auto-suggestions, and a hash table for real-time syntax highlighting — with zero dependencies beyond ncurses."
+github: "https://github.com/akshatddyl/terminal-based-text-editor"
+---
+Source Code available at: [github.com/akshatddyl/terminal-based-text-editor](https://github.com/akshatddyl/terminal-based-text-editor)
+
+
+*Most text editors hide their buffer implementation behind a language runtime and a UI framework. I wanted to see what's actually underneath: build the buffer, the undo system, the autocomplete, and the syntax highlighter myself, in C, with nothing but `ncurses` for rendering — and find out exactly where a "smarter" data structure actually earns its complexity, versus where it doesn't.*
+
+![Demo](/demo.jpg)
+
+## Tech Stack
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-b py-4 my-6 text-sm">
+  <div className="font-bold">Core language</div>
+  <div>C</div>
+  <div className="text-gray-500 dark:text-gray-400">Direct control over memory and allocation, in keeping with a from-scratch systems project.</div>
+
+  <div className="font-bold">Terminal UI</div>
+  <div>ncurses</div>
+  <div className="text-gray-500 dark:text-gray-400">Standard low-level terminal rendering and input, without pulling in a heavier UI dependency.</div>
+
+  <div className="font-bold">Text buffer</div>
+  <div>Custom Rope (binary tree)</div>
+  <div className="text-gray-500 dark:text-gray-400">O(log n) insert/delete regardless of file size, instead of an O(n) `memmove` on every edit.</div>
+
+  <div className="font-bold">Undo/Redo</div>
+  <div>Ring-buffer stack</div>
+  <div className="text-gray-500 dark:text-gray-400">Bounded memory (caps at 100 ops) with O(1) push/pop and exact inverse tracking.</div>
+
+  <div className="font-bold">Autocomplete</div>
+  <div>Custom Trie</div>
+  <div className="text-gray-500 dark:text-gray-400">O(m) prefix lookup so keyword suggestions update instantly on every keystroke.</div>
+
+  <div className="font-bold">Syntax highlighting</div>
+  <div>Custom Hash Table</div>
+  <div className="text-gray-500 dark:text-gray-400">O(1) average lookup from a parsed token to its `ncurses` color pair, inside the render loop.</div>
+
+  <div className="font-bold">Search & Replace</div>
+  <div>Boyer-Moore</div>
+  <div className="text-gray-500 dark:text-gray-400">Skip-ahead matching without ever flattening the buffer to a plain string first.</div>
+
+  <div className="font-bold">Correctness</div>
+  <div>Valgrind + `assert`</div>
+  <div className="text-gray-500 dark:text-gray-400">Zero-memory-leak guarantee and structural proof after every mutation.</div>
+</div>
+
+## Architecture & Implementation
+
+The buffer is a **rope**: a binary tree of leaf nodes (capped at 32 characters each) where every internal node caches the total length, newline count, and depth of its left subtree. That caching is what makes line/column lookups — "where's line 40," "what column is the cursor on" — an O(log n) tree descent instead of a linear scan through the whole file, which matters constantly during normal editing, not just for the insert/delete path. Every mutation — insert, delete, split, concatenate — is followed by a recursive invariant check (`validate_rope`) that walks the tree and asserts its cached weights, lengths, and newline counts are still internally consistent, so a corrupted tree fails loudly at the exact operation that broke it instead of surfacing as a mysterious crash three edits later.
+
+Undo/redo deliberately isn't built on the rope's own structure — it's a separate ring-buffer stack of `Operation` records, each storing the exact position, text, and operation type (`OP_INSERT`/`OP_DELETE`) needed to invert it. The stack caps at 100 entries and drops the oldest on overflow, trading unlimited undo history for a hard memory ceiling.
+
+Search and replace runs Boyer-Moore's bad-character heuristic directly against the rope through `rope_char_at()`, rather than flattening the buffer into a plain string first — each individual character comparison costs O(log n) to descend the tree, which the code's own comment calls out explicitly, on the reasoning that Boyer-Moore's skip-ahead nature keeps the total number of character comparisons low enough that the per-comparison cost doesn't dominate in practice.
+
+Auto-suggestion and syntax highlighting both run on every keystroke: the current word's prefix is queried against a trie for an O(m) completion, and each parsed token is hashed against a 128-bucket table mapping keywords straight to their `ncurses` color pair for the render loop. Crash recovery works at two levels — every meaningful edit triggers a background write to a hidden `.swp` file, and an explicit save writes to a `.tmp` file first and only `rename()`s it over the real file afterward, which is atomic on POSIX filesystems, so a crash mid-save can never leave a half-written file behind.
+
+## Challenges & Trade-offs
+
+The most interesting result in the whole project is one that doesn't flatter the rope: a dedicated benchmark of 100,000 random insertions and deletions at the buffer's midpoint showed the naive flat-array buffer finishing in ~0.045s against the rope's ~1.479s — the "worse" data structure won, by a lot. That's not a bug, it's a real crossover point: at buffer sizes small enough to stay cache-resident, `memmove`'s raw throughput and CPU vectorization beat a tree of individually heap-allocated, pointer-chasing nodes, and the rope's O(log n) advantage only starts paying for itself once files get large enough that O(n) `memmove` genuinely dominates. Reporting that honestly — instead of only showing the asymptotic argument — was the right call, and it's the kind of result that only shows up when you actually benchmark instead of trusting Big-O intuition.
+
+The recursive invariant validation after every rope mutation is its own deliberate trade: extra tree traversals on every insert and delete, in exchange for turning silent structural corruption into an immediate, localized `assert()` failure during development. And the Boyer-Moore search's O(log n)-per-character cost against the tree, instead of against a flat buffer, was an accepted trade rather than an oversight — a buffered iterator would be faster, but for an editor's search workload the skip-ahead heuristic already limits how often characters get compared, so the added complexity wasn't judged worth it.
+
+## What I Learned
+
+* Learned that asymptotic complexity isn't the same as real-world speed — an O(log n) structure can genuinely lose to an O(n) one at realistic sizes, and only benchmarking, not Big-O intuition alone, reveals where the actual crossover point is.
+* Learned to treat a data structure's invariants as testable, enforced properties rather than assumptions — recursive validation after every mutation turns silent memory corruption into an immediate, localized failure instead of a mystery three operations later.
+* Gained hands-on memory-safety discipline in C: building and debugging pointer-heavy structures (rope, trie, hash table) under Valgrind until they were provably leak-free and segfault-free under sustained stress.
+

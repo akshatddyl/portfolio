@@ -44,7 +44,7 @@ export default function BlogPage() {
                     day: 'numeric'
                   })}
                 </span>
-                <h2 className="font-serif text-2xl font-medium text-[var(--color-foreground)] group-hover:opacity-80 transition-opacity">
+                <h2 className="font-serif italic text-2xl font-medium text-[var(--color-foreground)] group-hover:opacity-80 transition-opacity">
                   {blog.frontmatter.title}
                 </h2>
                 {blog.frontmatter.summary && (

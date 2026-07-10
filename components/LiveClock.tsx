@@ -3,32 +3,38 @@
 import { useEffect, useState } from "react";
 
 export function LiveClock() {
+  const [mounted, setMounted] = useState(false);
   const [time, setTime] = useState("");
 
   useEffect(() => {
-    // Function to format time in IST
-    const updateTime = () => {
-      const now = new Date();
-      const options: Intl.DateTimeFormatOptions = {
-        timeZone: "Asia/Kolkata",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
+    setMounted(true);
+    
+    let interval: NodeJS.Timeout;
+    try {
+      const updateTime = () => {
+        const now = new Date();
+        const options: Intl.DateTimeFormatOptions = {
+          timeZone: "Asia/Kolkata",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        };
+        setTime(new Intl.DateTimeFormat("en-US", options).format(now));
       };
-      
-      // Formatting time and replacing default parts to match typical IST representation
-      const timeString = new Intl.DateTimeFormat("en-US", options).format(now);
-      setTime(timeString);
-    };
 
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+      updateTime();
+      interval = setInterval(updateTime, 1000);
+    } catch (e) {
+      console.error("LiveClock error:", e);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, []);
 
-  // Avoid hydration mismatch by rendering nothing or a placeholder on the server
-  if (!time) return <span>--:--:-- --</span>;
+  if (!mounted || !time) return <span>--:--:-- --</span>;
 
   return <span>{time}</span>;
 }
