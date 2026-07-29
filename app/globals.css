@@ -4,12 +4,18 @@
 @theme inline {
   --font-sans: var(--font-inter);
   --font-serif: var(--font-cormorant);
-  
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ring: var(--ring);
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -17,29 +23,88 @@
 @layer base {
   :root {
     --background: #FAFAFA;
-    --foreground: #1F2937;
-    --muted: #F3F4F6;
-    --muted-foreground: #6B7280;
-    --border: #E5E7EB;
+    --foreground: #0F172A;
+    --muted: #F1F5F9;
+    --muted-foreground: #64748B;
+    --border: #E2E8F0;
+    --card: #FFFFFF;
+    --card-foreground: #0F172A;
+    --accent: #6366F1;
+    --accent-foreground: #FFFFFF;
+    --ring: #6366F1;
+    --gradient-from: #6366F1;
+    --gradient-to: #8B5CF6;
   }
 
   .dark {
-    --background: #0F172A;
-    --foreground: #F8FAFC;
-    --muted: #1E293B;
-    --muted-foreground: #94A3B8;
-    --border: #334155;
+    --background: #09090B;
+    --foreground: #FAFAFA;
+    --muted: #18181B;
+    --muted-foreground: #A1A1AA;
+    --border: #27272A;
+    --card: #111113;
+    --card-foreground: #FAFAFA;
+    --accent: #818CF8;
+    --accent-foreground: #09090B;
+    --ring: #818CF8;
+    --gradient-from: #818CF8;
+    --gradient-to: #A78BFA;
   }
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);
-    @apply antialiased transition-colors duration-300;
+    @apply antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  ::selection {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  /* Focus ring utility */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
   }
 }
 
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* View Transitions (preserved) */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
@@ -50,4 +115,22 @@
 }
 ::view-transition-new(root) {
   z-index: 2;
+}
+
+/* Skip to content */
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-radius: 0 0 8px 0;
+  transition: top 0.2s;
+}
+.skip-to-content:focus {
+  top: 0;
 }
