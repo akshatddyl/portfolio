@@ -1,70 +1,31 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, Cormorant_Garamond } from "next/font/google";
+import Link from "next/link";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
-import { CommandPalette } from "@/components/CommandPalette";
-import { AiChat } from "@/components/AiChat";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import "./globals.css";
 
-const inter = Inter({
+// 1. Configure the fonts
+const inter = Inter({ 
   subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
+  variable: '--font-inter',
+  display: 'swap',
 });
 
-const jetbrainsMono = JetBrains_Mono({
+export const cormorant = Cormorant_Garamond({
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
   subsets: ["latin"],
-  variable: "--font-jetbrains",
-  display: "swap",
+  variable: '--font-cormorant',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: "Akshat Dhondiyal — Full Stack Developer",
-  description:
-    "Computer Science undergraduate and Full Stack Developer building distributed systems, AI applications, and developer tools. Explore my projects, skills, and experience.",
-  keywords: [
-    "Akshat Dhondiyal",
-    "Full Stack Developer",
-    "Computer Science",
-    "Software Engineer",
-    "React",
-    "Next.js",
-    "Java",
-    "Spring Boot",
-    "Distributed Systems",
-    "AI",
-    "Portfolio",
-  ],
-  authors: [{ name: "Akshat Dhondiyal" }],
-  creator: "Akshat Dhondiyal",
-  openGraph: {
-    type: "website",
-    locale: "en_US",
-    url: "https://akshatddyl.is.a.dev",
-    title: "Akshat Dhondiyal",
-    description:
-      "CS undergraduate interested in building low-level systems and high-performance backends.",
-    siteName: "Akshat Dhondiyal",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Akshat Dhondiyal — Full Stack Developer",
-    description:
-      "CS undergraduate interested in building low-level systems and high-performance backends.",
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
-  },
+  title: "akshat.",
+  description: "Personal portfolio, blog, and project showcase.",
 };
+
+import { LiveClock } from "@/components/LiveClock";
 
 export default function RootLayout({
   children,
@@ -73,20 +34,38 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${inter.variable} ${jetbrainsMono.variable} font-sans min-h-screen`}
-      >
+      <body className={`${inter.variable} ${cormorant.variable} font-sans min-h-screen`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {/* Skip to content link */}
-          <a href="#main-content" className="skip-to-content">
-            Skip to content
-          </a>
+          {/* Full-width outer container to handle 100dvh correctly */}
+          <div className="flex flex-col min-h-[100dvh]">
+            
+            {/* Full-width Navigation */}
+            <header className="relative z-50 w-full flex items-center justify-between px-6 md:px-12 py-4 md:py-6 shrink-0">
+              <Link 
+                href="/" 
+                className="font-serif italic text-2xl tracking-tight hover:opacity-70 transition-opacity"
+              >
+                akshatddyl
+              </Link>
+              
+              <ThemeToggle />
+            </header>
 
-          <Navbar />
-          <main id="main-content">{children}</main>
-          <Footer />
-          <CommandPalette />
-          <AiChat />
+            {/* Centered Main Content Container */}
+            <div className="max-w-[650px] w-full mx-auto px-6 flex-1 flex flex-col">
+              {/* Main Content */}
+              <main className="flex-1 flex flex-col">
+                {children}
+              </main>
+              
+              {/* Footer */}
+              <footer className="py-4 mt-2 border-t border-[var(--color-border)] text-sm text-[var(--color-muted-foreground)] flex flex-col items-center justify-center text-center gap-2 shrink-0">
+                <p>📍 Dehradun, Uttarakhand, India | <LiveClock /> IST</p>
+                <p> Made with ❤️‍🔥 and boredom</p>
+              </footer>
+            </div>
+
+          </div>
         </ThemeProvider>
       </body>
     </html>
